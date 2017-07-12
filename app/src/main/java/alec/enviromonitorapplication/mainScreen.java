@@ -31,6 +31,7 @@ import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.IAxisValueFormatter;
+import com.github.mikephil.charting.utils.ViewPortHandler;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
@@ -46,6 +47,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 
+import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
@@ -71,12 +73,10 @@ public class mainScreen extends AppCompatActivity {
     private List<Entry> temperatureEntries;
     private List<Entry> humidityEntries;
 
-    private Calendar calendar = Calendar.getInstance();
     private long readPeriod;
 
     private String address;
     private String name;
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -85,24 +85,20 @@ public class mainScreen extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main_screen);
 
-        mTextMessage = (TextView) findViewById(R.id.message);
-
-        //Load from memory
-        temperatureEntries = new LinkedList<>();
-        humidityEntries = new LinkedList<>();
-
-        enviromentData = new LinkedList<>();
-        load();
-
-
-
-        pairedDevices = new ArrayList<>();
-
-        BA = BluetoothAdapter.getDefaultAdapter();
 
         view = getLayoutInflater().inflate(R.layout.popup, null);
         lv = (ListView)view.findViewById(R.id.listView);
 
+        mTextMessage = (TextView) findViewById(R.id.message);
+        BA = BluetoothAdapter.getDefaultAdapter();
+        pairedDevices = new ArrayList<>();
+
+        //Load stuff from memory
+        temperatureEntries = new LinkedList<>();
+        humidityEntries = new LinkedList<>();
+        enviromentData = new LinkedList<>();
+
+        load();
         on();
 
         //Graph Set Up
@@ -112,11 +108,12 @@ public class mainScreen extends AppCompatActivity {
         }*/
 
         //----------Temperatures Chart----------
-        temperatureEntries.add(new Entry(calendar.getTimeInMillis(),20));
+        Calendar cal = Calendar.getInstance();
+        int time = cal.get(Calendar.MINUTE) * 60 + cal.get(Calendar.SECOND);
         populateGraph(temperatureEntries, humidityEntries, enviromentData);
         final LineChart t_chart = (LineChart) findViewById(R.id.t_chart);
 
-        final LineDataSet temperaturesDataSet = new LineDataSet(temperatureEntries, "Temperatures");
+        final LineDataSet temperaturesDataSet = new LineDataSet(temperatureEntries, "Temperature");
         temperaturesDataSet.setColor(Color.RED);
         temperaturesDataSet.setDrawHighlightIndicators(false);
         final LineData temperaturesLineData = new LineData(temperaturesDataSet);
@@ -124,7 +121,7 @@ public class mainScreen extends AppCompatActivity {
         temperaturesDataSet.setAxisDependency(YAxis.AxisDependency.LEFT);
         temperaturesLineData.setDrawValues(false);
         temperaturesDataSet.setDrawCircles(false);
-        //temperaturesDataSet.setMode(LineDataSet.Mode.HORIZONTAL_BEZIER);
+        temperaturesDataSet.setMode(LineDataSet.Mode.HORIZONTAL_BEZIER);
         temperaturesDataSet.setDrawFilled(true);
 
         //Formating
@@ -133,8 +130,10 @@ public class mainScreen extends AppCompatActivity {
         xaxis.setValueFormatter(new IAxisValueFormatter() {
             @Override
             public String getFormattedValue(float value, AxisBase axis) {
-                SimpleDateFormat mFormat = new SimpleDateFormat("hh:mm");
-                return mFormat.format(value);
+                SimpleDateFormat mFormat = new SimpleDateFormat("dd:hh:mm");
+                int seconds = ((int)value)%60;
+                int minutes = (((int)value) - seconds) / 60;
+                return minutes + ":" + seconds;
             }
         });
 
@@ -142,16 +141,16 @@ public class mainScreen extends AppCompatActivity {
         laxis.setValueFormatter(new IAxisValueFormatter() {
             @Override
             public String getFormattedValue(float value, AxisBase axis) {
-                DecimalFormat formatter = new DecimalFormat("###,###,##0");
+                DecimalFormat formatter = new DecimalFormat("##0");
                 return formatter.format(value) + " °C";
             }
         });
         t_chart.getAxisRight().setEnabled(false);
-        laxis.setAxisMinimum(-10f); // start at zero
-        laxis.setAxisMaximum(40f); // the axis maximum is 100
+        laxis.setAxisMinimum(-10); // start at zero
+        laxis.setAxisMaximum(40); // the axis maximum is 100
 
         t_chart.setDescription(null);
-
+        //t_chart.setVisibleXRange(1200,3600);
         //t_chart.setVisibleXRange(enviromentData.get(0).getTime(), enviromentData.get(enviromentData.size()-1).getTime());
 
         t_chart.invalidate(); // refresh
@@ -160,7 +159,8 @@ public class mainScreen extends AppCompatActivity {
 
         //----------Humidities Chart----------
         final LineChart h_chart = (LineChart) findViewById(R.id.h_chart);
-        humidityEntries.add(new Entry(calendar.getTimeInMillis(),50));
+        ///humidityEntries.add(new Entry(time, 0));
+        //humidityEntries.add(new Entry(time, 100));
 
         final LineDataSet humiditiesDataSet = new LineDataSet(humidityEntries, "Humidities");
         humiditiesDataSet.setColor(Color.BLUE);
@@ -168,10 +168,10 @@ public class mainScreen extends AppCompatActivity {
         final LineData humiditiesLineData = new LineData(humiditiesDataSet);
         humiditiesLineData.setDrawValues(false);
         humiditiesDataSet.setDrawCircles(false);
-        //humiditiesDataSet.setMode(LineDataSet.Mode.HORIZONTAL_BEZIER);
+        humiditiesDataSet.setMode(LineDataSet.Mode.HORIZONTAL_BEZIER);
         humiditiesDataSet.setDrawFilled(true);
         h_chart.setData(humiditiesLineData);
-        humiditiesDataSet.setAxisDependency(YAxis.AxisDependency.RIGHT);
+        humiditiesDataSet.setAxisDependency(YAxis.AxisDependency.LEFT);
 
         XAxis hXAxis  = h_chart.getXAxis();
         hXAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
@@ -187,14 +187,17 @@ public class mainScreen extends AppCompatActivity {
         hYAxis.setValueFormatter(new IAxisValueFormatter() {
             @Override
             public String getFormattedValue(float value, AxisBase axis) {
-                //DecimalFormat formatter = new DecimalFormat("###,###,##0");
-                return Float.toString(value) + "%";
+                DecimalFormat mFormat = new DecimalFormat("##0");
+                return mFormat.format(value) + "%";
             }
         });
 
         h_chart.getAxisRight().setEnabled(false);
-        hYAxis.setAxisMinimum(0f); // start at zero
-        hYAxis.setAxisMaximum(100f); // the axis maximum is 100
+        hYAxis.setAxisMinimum(0); // start at zero
+        hYAxis.setAxisMaximum(100); // the axis maximum is 100
+
+        ViewPortHandler hand = h_chart.getViewPortHandler();
+        //hand.setMinMaxScaleY(1f, 1f);
         //raxis.setGranularity(5f); // interval 1
         //raxis.setLabelCount(10, true); // force 6 labels
 
@@ -203,11 +206,13 @@ public class mainScreen extends AppCompatActivity {
         //----------Humidities Chart----------
 
 
-        mTextMessage.setText(name);
-        if(address != null) {
-            Log.d(TAG,"Attemmping to start new thread" + address);
-            ConnectThread connect = new ConnectThread(BA.getRemoteDevice(address));
-            connect.start();
+        if(BA.isEnabled()) {
+            mTextMessage.setText(name);
+            if (address != null) {
+                Log.d(TAG, "Attemmping to start new thread" + address);
+                ConnectThread connect = new ConnectThread(BA.getRemoteDevice(address));
+                connect.start();
+            }
         }
         //populateGraph(mainGraph);
 
@@ -236,24 +241,39 @@ public class mainScreen extends AppCompatActivity {
                 if (msg.what == ConnectedThread.MessageConstants.MESSAGE_READ) {
                     if(msg.arg2 == 'u') {
                         byte[] message = (byte[]) msg.obj;
-                        String s = " " + message[1] + " " + message[2];
+                        Calendar cal = Calendar.getInstance();
+                        long realtime = (cal.getTimeInMillis());
+
+
+                        String s = " t:" + message[1] + " h:" + message[2] + " time:" + Long.toString(realtime);
                         Log.d(TAG, s);
-                        long time = calendar.getTimeInMillis();
+
+                        if(message[1] == 0) {
+                            Log.d(TAG, "All Zeros Recorded");
+                            message[1] = (byte) enviromentData.get(enviromentData.size()-1).getTemperature();
+                            message[2] = (byte) enviromentData.get(enviromentData.size()-1).getTemperature();
+                        }
+
+                        enviromentData.add(new EnvData(realtime, message[1], message[2]));
+
+
+                        int time = cal.get(Calendar.MINUTE) * 60 + cal.get(Calendar.SECOND);
                         temperaturesDataSet.addEntry(new Entry(time, message[1]));
                         temperaturesLineData.notifyDataChanged();
 
                         humiditiesDataSet.addEntry(new Entry(time, message[2]));
                         humiditiesLineData.notifyDataChanged();
 
+                        int seconds = (time)%60;
+                        int minutes = (time - seconds) / 60;
+                        Log.d(TAG, "Time: "+  minutes + ":" + seconds);
+
                         t_chart.notifyDataSetChanged();
                         t_chart.invalidate(); // refresh
                         h_chart.notifyDataSetChanged();
                         h_chart.invalidate(); // refresh
 
-                        enviromentData.add(new EnvData(time, message[1], message[2]));
-
-                        //calendar.add(Calendar.SECOND, 30);
-                        mTextMessage.setText(s + " " + enviromentData.size() + " " + temperatureEntries.get(temperatureEntries.size()-1).getX());
+                        mTextMessage.setText(s + " " + enviromentData.size());
                         //saveGraphs();
                     }
                 }
@@ -272,7 +292,9 @@ public class mainScreen extends AppCompatActivity {
         final Button disconnectButton = (Button) findViewById(R.id.Disconnect);
         disconnectButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                off();
+                getApplication().deleteFile(ARRAY_STORAGE_FILE);
+                enviromentData.clear();
+                //off();
             }
         });
 
@@ -326,7 +348,7 @@ public class mainScreen extends AppCompatActivity {
 
             // The connection attempt succeeded. Perform work associated with
             // the connection in a separate thread.
-            ConnectedThread connected = new ConnectedThread(mHandler, mmSocket, readPeriod, temperatureEntries, humidityEntries);
+            ConnectedThread connected = new ConnectedThread(mHandler, mmSocket, readPeriod, enviromentData);
             connected.start();
         }
 
@@ -408,7 +430,6 @@ public class mainScreen extends AppCompatActivity {
         name = settings.getString("bluetoothName", null);
         readPeriod = settings.getLong("readPeriod", 3000);
         //this.deleteFile(ARRAY_STORAGE_FILE);
-        //this.deleteFile(SETTINGS_FILE);
 
         try
         {
@@ -420,19 +441,15 @@ public class mainScreen extends AppCompatActivity {
             ois.close();
             fis.close();
             Log.d(TAG, "Loading Old Data" + json);
-
         }catch(FileNotFoundException e){
             Log.e(TAG, "App did not have a file", e);
-
         } catch (Exception e) {
             Log.e(TAG, "App did not Load properly", e);
-
         }
     }
 
     @Override
     protected void onStop() {
-        super.onStop();
 
         SharedPreferences settings = getSharedPreferences(SETTINGS_FILE, 0);
         SharedPreferences.Editor sEditor = settings.edit();
@@ -461,17 +478,33 @@ public class mainScreen extends AppCompatActivity {
             Log.d(TAG, "Saving Old Data");
 
         }
-        catch (IOException e)
-        {
+        catch (IOException e) {
             Log.e(TAG, "App did not save properly", e);
         }
 
+        //add a save command to arduino
+
+        super.onStop();
+
     }
 
+    /**
+     * This function populates the temperature and humidity entry list
+     * @param tempEntries
+     * @param huEntries
+     * @param data
+     */
     private void populateGraph(List<Entry> tempEntries, List<Entry> huEntries, List<EnvData> data) {
+        Calendar cal = Calendar.getInstance();
+        if(data.size() == 0) {
+            data.add(new EnvData(cal.getTimeInMillis(), 25, 45));
+        }
         for(EnvData d : data) {
-            tempEntries.add(new Entry(d.getTime(), d.getTemperature()));
-            huEntries.add(new Entry(d.getTime(), d.getHumidity()));
+            cal.setTimeInMillis(d.getTime());
+            //Currently should only do 1 hour of time
+            int time = cal.get(Calendar.MINUTE) * 60 + cal.get(Calendar.SECOND);
+            tempEntries.add(new Entry(time, d.getTemperature()));
+            huEntries.add(new Entry(time, d.getHumidity()));
         }
 
     }

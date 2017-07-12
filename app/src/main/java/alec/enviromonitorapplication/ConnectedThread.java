@@ -20,7 +20,7 @@ import java.util.List;
  * This class handles the communication between the connected bluetooth device and the application
  */
 
-public class ConnectedThread extends Thread {
+class ConnectedThread extends Thread {
     private final BluetoothSocket mySocket;
     private final InputStream myInStream;
     private final OutputStream myOutStream;
@@ -30,18 +30,17 @@ public class ConnectedThread extends Thread {
     private long readPeriod;
     private Calendar calendar = Calendar.getInstance();
 
-    private List<Entry> temps;
-    private List<Entry> humidity;
+    private List<EnvData> data;
 
     private static final String TAG = "Debug";
 
-    public interface MessageConstants {
+    interface MessageConstants {
         public static final int MESSAGE_READ = 0;
         public static final int MESSAGE_WRITE = 1;
         public static final int MESSAGE_TOAST = 2;
     }
 
-    public ConnectedThread(Handler h, BluetoothSocket socket, long readPeriod, List<Entry> temperatures, List<Entry> humidity) {
+    ConnectedThread(Handler h, BluetoothSocket socket, long readPeriod, List<EnvData> data) {
         mySocket = socket;
         InputStream tmpInStream = null;
         OutputStream tmpOutStream = null;
@@ -64,8 +63,7 @@ public class ConnectedThread extends Thread {
 
         myHandler = h;
         this.readPeriod = readPeriod;
-        temps = temperatures;
-        this.humidity = humidity;
+        this.data = data;
     }
 
     public void run() {
@@ -90,7 +88,7 @@ public class ConnectedThread extends Thread {
                     Log.d(TAG, "Getting all of the data");
                 }
                 //Reconnected after a break
-                else if (temps.get(temps.size()-1).getX() < (calendar.getTimeInMillis() - readPeriod)) {
+                else if (temps.get(data.size()-1).getX() < (calendar.getTimeInMillis() - readPeriod)) {
                     Date d = new Date((long) temps.get(temps.size()-1).getX());
                     Log.d(TAG, d.toString());
                     message = new byte[1];

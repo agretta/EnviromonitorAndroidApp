@@ -2,10 +2,10 @@ package alec.enviromonitorapplication;
 
 public class EnvData {
     private long time;
-    private byte temperature;
-    private byte humidity;
+    private int temperature;
+    private int humidity;
 
-    public EnvData(long time, byte temp, byte humidity) {
+    public EnvData(long time, int temp, int humidity) {
         this.time = time;
         this.temperature = temp;
         this.humidity = humidity;
@@ -15,11 +15,11 @@ public class EnvData {
         return time;
     }
 
-    public byte getTemperature() {
+    public int getTemperature() {
         return temperature;
     }
 
-    public byte getHumidity() {
+    public int getHumidity() {
         return humidity;
     }
 
