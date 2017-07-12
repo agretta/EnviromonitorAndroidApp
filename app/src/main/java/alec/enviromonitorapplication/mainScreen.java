@@ -3,12 +3,12 @@ package alec.enviromonitorapplication;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.Looper;
 import android.os.Message;
 import android.preference.PreferenceManager;
 import android.support.v7.app.AlertDialog;
@@ -25,7 +25,6 @@ import android.widget.Toast;
 
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.AxisBase;
-import com.github.mikephil.charting.components.Description;
 import com.github.mikephil.charting.components.XAxis;
 import com.github.mikephil.charting.components.YAxis;
 import com.github.mikephil.charting.data.Entry;
@@ -33,10 +32,15 @@ import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.formatter.IAxisValueFormatter;
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.lang.reflect.Type;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -46,7 +50,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
 
-
 public class mainScreen extends AppCompatActivity {
     private TextView mTextMessage;
     private Handler mHandler; // handler that gets info from Bluetooth service
@@ -55,58 +58,74 @@ public class mainScreen extends AppCompatActivity {
 
     private UUID uuid = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     private static final String TAG = "Debug";
+    public static final String SETTINGS_FILE = "EnviroMonitorSettings";
+    public static final String ARRAY_STORAGE_FILE = "EnvMonitorStorage";
 
     private ArrayList<BluetoothDevice> pairedDevices;
     private ListView lv;
     private View view;
     private AlertDialog dialog;
 
-    private List<Entry> temps;
-    private List<Entry> humidity;
+    private List<EnvData> enviromentData;
 
-    private Calendar calendar;
+    private List<Entry> temperatureEntries;
+    private List<Entry> humidityEntries;
+
+    private Calendar calendar = Calendar.getInstance();
     private long readPeriod;
 
-    private interface MessageConstants {
-        public static final int MESSAGE_READ = 0;
-        public static final int MESSAGE_WRITE = 1;
-        public static final int MESSAGE_TOAST = 2;
-    }
+    private String address;
+    private String name;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
         //Sets the initial view
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main_screen);
 
-        temps = new LinkedList<>();
-        humidity = new LinkedList<>();
+        mTextMessage = (TextView) findViewById(R.id.message);
+
+        //Load from memory
+        temperatureEntries = new LinkedList<>();
+        humidityEntries = new LinkedList<>();
+
+        enviromentData = new LinkedList<>();
+        load();
+
+
+
         pairedDevices = new ArrayList<>();
-        readPeriod = 3000;
 
         BA = BluetoothAdapter.getDefaultAdapter();
-        calendar = Calendar.getInstance();
 
         view = getLayoutInflater().inflate(R.layout.popup, null);
         lv = (ListView)view.findViewById(R.id.listView);
 
-        mTextMessage = (TextView) findViewById(R.id.message);
+        on();
 
         //Graph Set Up
         /*for(int i = 0; i < 100; i++) {
-            temps.add(new Entry(i, i + (int)(Math.random() * 10)-5));
+            humidityEntries.add(new Entry(calendar.getTimeInMillis(), 50 + (int)(Math.random() * 20)-10));
+            calendar.add(Calendar.SECOND,3);
         }*/
-        //----------Temperatures Chart----------
-        temps.add(new Entry(calendar.getTimeInMillis(),20));
 
+        //----------Temperatures Chart----------
+        temperatureEntries.add(new Entry(calendar.getTimeInMillis(),20));
+        populateGraph(temperatureEntries, humidityEntries, enviromentData);
         final LineChart t_chart = (LineChart) findViewById(R.id.t_chart);
 
-        final LineDataSet temperaturesDataSet = new LineDataSet(temps, "Temperatures");
+        final LineDataSet temperaturesDataSet = new LineDataSet(temperatureEntries, "Temperatures");
         temperaturesDataSet.setColor(Color.RED);
+        temperaturesDataSet.setDrawHighlightIndicators(false);
         final LineData temperaturesLineData = new LineData(temperaturesDataSet);
         t_chart.setData(temperaturesLineData);
         temperaturesDataSet.setAxisDependency(YAxis.AxisDependency.LEFT);
         temperaturesLineData.setDrawValues(false);
+        temperaturesDataSet.setDrawCircles(false);
+        //temperaturesDataSet.setMode(LineDataSet.Mode.HORIZONTAL_BEZIER);
+        temperaturesDataSet.setDrawFilled(true);
 
         //Formating
         XAxis xaxis  = t_chart.getXAxis();
@@ -130,17 +149,27 @@ public class mainScreen extends AppCompatActivity {
         t_chart.getAxisRight().setEnabled(false);
         laxis.setAxisMinimum(-10f); // start at zero
         laxis.setAxisMaximum(40f); // the axis maximum is 100
-        t_chart.setDescription(new Description());
+
+        t_chart.setDescription(null);
+
+        //t_chart.setVisibleXRange(enviromentData.get(0).getTime(), enviromentData.get(enviromentData.size()-1).getTime());
+
         t_chart.invalidate(); // refresh
         //----------Temperatures Chart----------
 
+
         //----------Humidities Chart----------
         final LineChart h_chart = (LineChart) findViewById(R.id.h_chart);
-        humidity.add(new Entry(calendar.getTimeInMillis(),40));
+        humidityEntries.add(new Entry(calendar.getTimeInMillis(),50));
 
-        final LineDataSet humiditiesDataSet = new LineDataSet(humidity, "Humidities");
+        final LineDataSet humiditiesDataSet = new LineDataSet(humidityEntries, "Humidities");
         humiditiesDataSet.setColor(Color.BLUE);
+        humiditiesDataSet.setDrawHighlightIndicators(false);
         final LineData humiditiesLineData = new LineData(humiditiesDataSet);
+        humiditiesLineData.setDrawValues(false);
+        humiditiesDataSet.setDrawCircles(false);
+        //humiditiesDataSet.setMode(LineDataSet.Mode.HORIZONTAL_BEZIER);
+        humiditiesDataSet.setDrawFilled(true);
         h_chart.setData(humiditiesLineData);
         humiditiesDataSet.setAxisDependency(YAxis.AxisDependency.RIGHT);
 
@@ -158,8 +187,8 @@ public class mainScreen extends AppCompatActivity {
         hYAxis.setValueFormatter(new IAxisValueFormatter() {
             @Override
             public String getFormattedValue(float value, AxisBase axis) {
-                DecimalFormat formatter = new DecimalFormat("###,###,##0");
-                return formatter.format(value) + "%";
+                //DecimalFormat formatter = new DecimalFormat("###,###,##0");
+                return Float.toString(value) + "%";
             }
         });
 
@@ -168,80 +197,78 @@ public class mainScreen extends AppCompatActivity {
         hYAxis.setAxisMaximum(100f); // the axis maximum is 100
         //raxis.setGranularity(5f); // interval 1
         //raxis.setLabelCount(10, true); // force 6 labels
-        humiditiesLineData.setDrawValues(false);
 
+        h_chart.setDescription(null);
         h_chart.invalidate(); // refresh
         //----------Humidities Chart----------
 
 
-
+        mTextMessage.setText(name);
+        if(address != null) {
+            Log.d(TAG,"Attemmping to start new thread" + address);
+            ConnectThread connect = new ConnectThread(BA.getRemoteDevice(address));
+            connect.start();
+        }
         //populateGraph(mainGraph);
-        /*
-        // custom label formatter to show Temperature in Celcius and date as xaxis
-        mainGraph.getGridLabelRenderer().setNumHorizontalLabels(4);
-        mainGraph.getGridLabelRenderer().setNumVerticalLabels(5);
-        mainGraph.getGridLabelRenderer().setLabelFormatter(new DefaultLabelFormatter() {
-            @Override
-            public String formatLabel(double value, boolean isValueX) {
-                //time stamps
-                if (isValueX) {
-                    SimpleDateFormat dateFormat = new SimpleDateFormat("hh:mm");
-                    Date d = new Date((long) (value));
-                    //calendar.add(Calendar.MINUTE, 1);
-                    return (dateFormat.format(d));
-                } else {
-                    // show currency for y values
-                    return super.formatLabel(value, isValueX) + "°C";
-                }
-            }
-        });
 
-        */
+        //Connect to selected device
         lv.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 //Toast.makeText(getApplicationContext(), "Click ListItem Number " + position, Toast.LENGTH_LONG).show();
                 dialog.dismiss();
-                ConnectThread thread = new ConnectThread(pairedDevices.get(position));
+
+                BluetoothDevice bt = pairedDevices.get(position);
+                address = bt.getAddress();
+                name = bt.getName();
+                Log.d(TAG, bt.getAddress());
+                Log.d(TAG, bt.getName());
+
+                ConnectThread thread = new ConnectThread(bt);
                 thread.start();
             }
         });
 
-        //-----Bluetooth-----
+        //Handle messages passed from the device ConnectedThread
         mHandler = new Handler() {
             @Override
             public void handleMessage(Message msg) {
-                if (msg.what == MessageConstants.MESSAGE_READ) {
+                if (msg.what == ConnectedThread.MessageConstants.MESSAGE_READ) {
                     if(msg.arg2 == 'u') {
                         byte[] message = (byte[]) msg.obj;
                         String s = " " + message[1] + " " + message[2];
                         Log.d(TAG, s);
-                        temperaturesDataSet.addEntry(new Entry(calendar.getTimeInMillis(), message[1]));
+                        long time = calendar.getTimeInMillis();
+                        temperaturesDataSet.addEntry(new Entry(time, message[1]));
                         temperaturesLineData.notifyDataChanged();
 
-                        humiditiesDataSet.addEntry(new Entry(calendar.getTimeInMillis(), message[2]));
+                        humiditiesDataSet.addEntry(new Entry(time, message[2]));
                         humiditiesLineData.notifyDataChanged();
 
                         t_chart.notifyDataSetChanged();
                         t_chart.invalidate(); // refresh
                         h_chart.notifyDataSetChanged();
                         h_chart.invalidate(); // refresh
-                        calendar.add(Calendar.MINUTE, 1);
-                        mTextMessage.setText(s);
+
+                        enviromentData.add(new EnvData(time, message[1], message[2]));
+
+                        //calendar.add(Calendar.SECOND, 30);
+                        mTextMessage.setText(s + " " + enviromentData.size() + " " + temperatureEntries.get(temperatureEntries.size()-1).getX());
                         //saveGraphs();
                     }
                 }
             }
         };
 
+        //Enables bluetooth and displays the list of paired devices
         final Button connectButton = (Button) findViewById(R.id.Connect);
         connectButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                on();
                 list();
             }
         });
 
+        //Disconnects the paired bluetooth device
         final Button disconnectButton = (Button) findViewById(R.id.Disconnect);
         disconnectButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
@@ -256,12 +283,15 @@ public class mainScreen extends AppCompatActivity {
         SharedPreferences.Editor editor = sharedPrefs.edit();
         Gson gson = new Gson();
 
-        String json = gson.toJson(temps);
+        String json = gson.toJson(temperatureEntries);
 
         editor.putString(TAG, json);
         editor.apply();
     }
 
+    /**
+     * This private inner class handles connecting a bluetooth device to the application
+     */
     private class ConnectThread extends Thread {
         private final BluetoothSocket mmSocket;
         private final BluetoothDevice mmDevice;
@@ -273,7 +303,7 @@ public class mainScreen extends AppCompatActivity {
             mmDevice = device;
 
             try {
-                // Get a BluetoothSocket to connect with the given BluetoothDevice.
+                // Get a socket to connect with the given device.
                 tmp = device.createRfcommSocketToServiceRecord(uuid);
             } catch (IOException e) {
                 Log.e(TAG, "Socket's create() method failed", e);
@@ -283,7 +313,6 @@ public class mainScreen extends AppCompatActivity {
         }
 
         public void run() {
-            // Cancel discovery because it otherwise slows down the connection.
             BA.cancelDiscovery();
 
             try {
@@ -297,7 +326,7 @@ public class mainScreen extends AppCompatActivity {
 
             // The connection attempt succeeded. Perform work associated with
             // the connection in a separate thread.
-            ConnectedThread connected = new ConnectedThread(mmSocket);
+            ConnectedThread connected = new ConnectedThread(mHandler, mmSocket, readPeriod, temperatureEntries, humidityEntries);
             connected.start();
         }
 
@@ -311,139 +340,6 @@ public class mainScreen extends AppCompatActivity {
         }
     }
 
-    private class ConnectedThread extends Thread {
-        private final BluetoothSocket mmSocket;
-        private final InputStream mmInStream;
-        private final OutputStream mmOutStream;
-        private byte[] mmBuffer;
-
-        public ConnectedThread(BluetoothSocket socket) {
-            mmSocket = socket;
-            InputStream tmpIn = null;
-            OutputStream tmpOut = null;
-
-            // Get the input and output streams; using temp objects because
-            // member streams are final.
-            try {
-                tmpIn = socket.getInputStream();
-            } catch (IOException e) {
-                Log.e(TAG, "Error occurred when creating input stream", e);
-            }
-            try {
-                tmpOut = socket.getOutputStream();
-            } catch (IOException e) {
-                Log.e(TAG, "Error occurred when creating output stream", e);
-            }
-
-            mmInStream = tmpIn;
-            mmOutStream = tmpOut;
-
-        }
-
-        public void run() {
-            mmBuffer = new byte[1024];
-            int numBytes; // bytes returned from read()
-            Looper.prepare();
-            //Looper.loop();
-            // Keep listening to the InputStream until an exception occurs.
-            while (mmSocket.isConnected()) {
-                try {
-                    byte[] message;
-                    int type = 0;
-                    if(readPeriod == 0) {
-                        message = new byte[1];
-                        message[0] = 'p';
-                        Log.d(TAG, "P Message");
-                    }
-                    //Completely Empty data set
-                   /* else if(temps.size() == 0) {
-                        message[0] = 'a';
-                    }
-                    //Reconnected after a break
-                    else if (temperatureSeries.getHighestValueX() < (calendar.getTimeInMillis() - readPeriod)) {
-                        message[0] = 'r';
-                    }*/
-                    //normal update
-                    else {
-                        message = new byte[3];
-                        message[0] = 'u';
-                        message[1] = 0;
-                        message[2] = 1;
-                        Log.d(TAG, "Update Message");
-                    }
-
-                    write(message);
-
-                    //try {Thread.sleep(1000);}
-                    //catch(InterruptedException ex) {Thread.currentThread().interrupt();}
-
-                    if(0 != mmInStream.available()){
-                        numBytes = mmInStream.read(mmBuffer);
-                        //Log.d(TAG, "Reading Message After");
-                        Log.d(TAG, "Number of bytes: " + Integer.toString(numBytes));
-
-                        String log = "Bytes Received:";
-                        for(int i = 0; i < numBytes; i++) {
-                            log += mmBuffer[i] + " ";
-                        }
-                        Log.d(TAG, log);
-
-                        //if mmBuffer[0] is not 0, then an error occured
-                        if(mmBuffer[0] == 0) {
-
-                            switch (message[0]) {
-                                case 'p': {
-                                    byte b = mmBuffer[2];
-                                    readPeriod = (((int)mmBuffer[1]) << 8) + (b & 0xFF);
-                                    Log.d(TAG, "Test 1: " + readPeriod);
-                                    break;
-                                }
-                                case 'u': {
-                                    // Send the obtained bytes to the UI activity.
-                                    Log.d(TAG, "Update Test: " + " " + mmBuffer[0] + " " + mmBuffer[1] + " " + mmBuffer[2]);
-                                    Message readMsg = mHandler.obtainMessage(MessageConstants.MESSAGE_READ, mmBuffer[0], message[0], mmBuffer);
-                                    readMsg.sendToTarget();
-                                    break;
-                                }
-                            }
-                        } else {
-                            Log.d(TAG, "Error #" + mmBuffer[0]);
-                        }
-
-                    } else {
-                        Log.d(TAG, "Nothing Avaliable");
-
-                    }
-
-                    //Wait for 10 seconds
-                    try {Thread.sleep(readPeriod);}
-                    catch(InterruptedException ex) {Thread.currentThread().interrupt();}
-
-                } catch (IOException e) {
-                    Log.d(TAG, "Input stream was disconnected", e);
-                    break;
-                }
-            }
-        }
-
-        // Call this from the main activity to send data to the remote device.
-        public void write(byte[] bytes) {
-            try {
-                mmOutStream.write(bytes);
-            } catch (IOException e) {
-                Log.e(TAG, "Error occurred when sending data", e);
-
-                // Send a failure message back to the activity.
-                Message writeErrorMsg =
-                        mHandler.obtainMessage(MessageConstants.MESSAGE_TOAST);
-                Bundle bundle = new Bundle();
-                bundle.putString("toast",
-                        "Couldn't send data to the other device");
-                writeErrorMsg.setData(bundle);
-                mHandler.sendMessage(writeErrorMsg);
-            }
-        }
-    }
 
     //Bluetooth Functionality
     public void on(){
@@ -467,20 +363,19 @@ public class mainScreen extends AppCompatActivity {
     }
 
     public void list(){
-        //visible();
         ((ViewGroup) lv.getParent()).removeView(lv);
         pairedDevices.clear();
 
         BA.startDiscovery();
         pairedDevices.addAll(BA.getBondedDevices());
-        ArrayList list = new ArrayList();
+        ArrayList<String> list = new ArrayList<>();
 
         for(BluetoothDevice bt : pairedDevices) {
             list.add(bt.getName());
         }
 
-        Toast.makeText(getApplicationContext(), "Showing Paired Devices",Toast.LENGTH_SHORT).show();
-        final ArrayAdapter adapter = new ArrayAdapter(mainScreen.this, android.R.layout.simple_list_item_1, pairedDevices);
+        Toast.makeText(getApplicationContext(), "Showing Paired Devices", Toast.LENGTH_SHORT).show();
+        final ArrayAdapter adapter = new ArrayAdapter(mainScreen.this, android.R.layout.simple_list_item_1, list);
         lv.setAdapter(adapter);
 
         //AlertDialog.Builder builder = new AlertDialog.Builder(mainScreen.this);
@@ -494,25 +389,90 @@ public class mainScreen extends AppCompatActivity {
         dialog.show();
     }
 
-    private void populateGraph(LineChart mainGraph) {
-        /*for (int i = 0; i < points.length; i++) {
-            points[i] = new DataPoint(calendar.getTime(), 20 + (Math.random()*10+1));
-            calendar.add(Calendar.MINUTE, 1);
+
+
+    /**
+     * Function that accesses the stored memory of this device.
+     * Loads:
+     *      - Address of connected bluetooth device
+     *      - Name of connected bluetooth device
+     *      - current sensor reading period
+     *      - temperature data
+     *      - humidity data
+     * if a setting doesn't exist, then it is loaded with a default value
+     */
+    private void load() {
+        SharedPreferences settings = getSharedPreferences(SETTINGS_FILE, 0);
+
+        address = settings.getString("bluetoothAddress", null);
+        name = settings.getString("bluetoothName", null);
+        readPeriod = settings.getLong("readPeriod", 3000);
+        //this.deleteFile(ARRAY_STORAGE_FILE);
+        //this.deleteFile(SETTINGS_FILE);
+
+        try
+        {
+            FileInputStream fis = openFileInput(ARRAY_STORAGE_FILE);
+            ObjectInputStream ois = new ObjectInputStream(fis);
+            Gson gson = new Gson();
+            String json = (String) ois.readObject();
+            enviromentData = gson.fromJson(json, new TypeToken<ArrayList<EnvData>>(){}.getType());
+            ois.close();
+            fis.close();
+            Log.d(TAG, "Loading Old Data" + json);
+
+        }catch(FileNotFoundException e){
+            Log.e(TAG, "App did not have a file", e);
+
+        } catch (Exception e) {
+            Log.e(TAG, "App did not Load properly", e);
+
         }
-        */
-        /*
-        String str = "";//you need to retrieve this string from shared preferences.
-        Type type = new TypeToken<ArrayList<Integer>>() { }.getType();
-        List<Integer> placeholder = new Gson().fromJson(str, type);
-        if (placeholder != null) {
-            temps = placeholder;
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+
+        SharedPreferences settings = getSharedPreferences(SETTINGS_FILE, 0);
+        SharedPreferences.Editor sEditor = settings.edit();
+
+        sEditor.putString("bluetoothAddress", address);
+        sEditor.putString("bluetoothName", name);
+        sEditor.putLong("readPeriod", readPeriod);
+
+        //Will clear SharedPreferences
+        /*if(false) {
+            sEditor.clear();
+        }*/
+
+        sEditor.apply();
+
+        try {
+            Gson gson = new Gson();
+            Type listType = new TypeToken<ArrayList<EnvData>>() {}.getType();
+            String json = gson.toJson(enviromentData, listType);
+            FileOutputStream fos = openFileOutput(ARRAY_STORAGE_FILE, Context.MODE_PRIVATE);
+            ObjectOutputStream oos = new ObjectOutputStream(fos);
+            oos.writeObject(json);
+            //oos.writeObject(humidityEntries);
+            oos.close();
+            fos.close();
+            Log.d(TAG, "Saving Old Data");
+
+        }
+        catch (IOException e)
+        {
+            Log.e(TAG, "App did not save properly", e);
         }
 
-        String str2 = "";//you need to retrieve this string from shared preferences.
-        Type type2 = new TypeToken<ArrayList<Integer>>() { }.getType();
-        List<Integer> placeholder2 = new Gson().fromJson(str, type);
-        if (placeholder != null) {
-            humidity = placeholder2;
-        }*/
+    }
+
+    private void populateGraph(List<Entry> tempEntries, List<Entry> huEntries, List<EnvData> data) {
+        for(EnvData d : data) {
+            tempEntries.add(new Entry(d.getTime(), d.getTemperature()));
+            huEntries.add(new Entry(d.getTime(), d.getHumidity()));
+        }
+
     }
 }
