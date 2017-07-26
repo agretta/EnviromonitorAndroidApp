@@ -5,4 +5,11 @@
     <string name="title_notifications">Notifications</string>
     <string name="title_composite">Composite Graph</string>
     <string name="title_seperate">Seperate Graphs</string>
+    <string name="change_screen">Change View</string>
+    <string name="options">options</string>
+    <string name="hour_view">Hour View</string>
+    <string name="day_view">Day View</string>
+    <string name="week_view">Week View</string>
+    <string name="month_view">Month View</string>
+    <string name="year_view">Year View</string>
 </resources>

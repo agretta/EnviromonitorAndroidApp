@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/switch_screen"
+        android:title="@string/change_screen"/>
+    <item android:id="@+id/hour_view"
+        android:title="@string/hour_view"/>
+    <item android:id="@+id/day_view"
+        android:title="@string/day_view"/>
+    <item android:id="@+id/week_view"
+        android:title="@string/week_view"/>
+    <item android:id="@+id/month_view"
+        android:title="@string/month_view"/>
+    <item android:id="@+id/year_view"
+        android:title="@string/year_view"/>
+    <item android:id="@+id/options"
+        android:title="@string/options" />
+</menu>

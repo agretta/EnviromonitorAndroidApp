@@ -15,6 +15,7 @@ import java.io.OutputStream;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.SynchronousQueue;
 
 /**
  * This class handles the communication between the connected bluetooth device and the application
@@ -71,8 +72,10 @@ class ConnectedThread extends Thread {
         int numBytes;
         Looper.prepare();
         //Looper.loop();
-        // Keep listening to the InputStream until an exception occurs.
+        // Keep listening to the InputStream until an exception occurs
+        boolean pause = true;
         while (mySocket.isConnected()) {
+            calendar = Calendar.getInstance();
             try {
                 byte[] message;
                 int type = 0;
@@ -82,20 +85,32 @@ class ConnectedThread extends Thread {
                     Log.d(TAG, "P Message");
                 }
                 //Completely Empty data set
-                /*else if(temps.size() == 1) {
+                /*else if(data.size() == 1) {
                     message = new byte[1];
                     message[0] = 'a';
                     Log.d(TAG, "Getting all of the data");
-                }
+                }*/
                 //Reconnected after a break
-                else if (temps.get(data.size()-1).getX() < (calendar.getTimeInMillis() - readPeriod)) {
-                    Date d = new Date((long) temps.get(temps.size()-1).getX());
+                /*else if (data.get(data.size()-1).getTime() < (calendar.getTimeInMillis() - readPeriod)) {
+                    Date d = new Date(data.get(data.size()-1).getTime());
+                    long diff = calendar.getTimeInMillis() - d.getTime();
+                    int amt = (int)(diff/readPeriod);
                     Log.d(TAG, d.toString());
-                    message = new byte[1];
-                    message[0] = 'r';
+                    message = new byte[3];
+                    message[0] = 'u';
+                    message[1] = (byte)(amt>>8);
+                    message[2] = (byte)(amt);
+                    Log.d(TAG, "Reconnect Stuff");
 
                 }*/
                 //normal update
+                if(pause && data.get(data.size()-1).getTime() < (calendar.getTimeInMillis() - readPeriod * 2)) {
+                    message = new byte[1];
+                    message[0] = 'l';
+                    Log.d(TAG, "New Message");
+                    pause = false;
+                }
+
                 else {
                     message = new byte[3];
                     message[0] = 'u';
@@ -106,54 +121,34 @@ class ConnectedThread extends Thread {
 
                 write(message);
 
-                //try {Thread.sleep(1000);}
-                //catch(InterruptedException ex) {Thread.currentThread().interrupt();}
+                long time = System.currentTimeMillis();
+                long overTime = time += (long)1000;
+                while((0 == myInStream.available()) && (overTime >= time)) {
+                    time = System.currentTimeMillis();
+                }
 
                 if(0 != myInStream.available()){
                     numBytes = myInStream.read(myBuffer);
-                    //Log.d(TAG, "Reading Message After");
-                    Log.d(TAG, "Number of bytes: " + Integer.toString(numBytes));
-
-                    String log = "Bytes Received:";
+                    //Log.d(TAG, "Number of bytes: " + Integer.toString(numBytes));
+                    String log = "Bytes: " + Integer.toString(numBytes) + ": [ ";
                     for(int i = 0; i < numBytes; i++) {
                         log += myBuffer[i] + " ";
                     }
+                    log += "]";
                     Log.d(TAG, log);
 
                     //if myBuffer[0] is not 0, then an error occured
                     if(myBuffer[0] == 0) {
-
-                        switch (message[0]) {
-                            case 'p': {
-                                byte b = myBuffer[2];
-                                readPeriod = (((int)myBuffer[1]) << 8) + (b & 0xFF);
-                                Log.d(TAG, "Test 1: " + readPeriod);
-                                break;
-                            }
-                            case 'u': {
-                                // Send the obtained bytes to the UI activity.
-                                Log.d(TAG, "Update Test: " + " " + myBuffer[0] + " " + myBuffer[1] + " " + myBuffer[2]);
-                                Message readMsg = myHandler.obtainMessage(MessageConstants.MESSAGE_READ, myBuffer[0], message[0], myBuffer);
-                                readMsg.sendToTarget();
-                                break;
-                            }
-                            case 'a': {
-
-                            }
-                            case 'r': {
-
-                            }
-                        }
+                        Message readMsg = myHandler.obtainMessage(MessageConstants.MESSAGE_READ, numBytes, message[0], myBuffer);
+                        readMsg.sendToTarget();
                     } else {
-                        Log.d(TAG, "Error #" + myBuffer[0]);
+                        Log.d(TAG, "Error # " + myBuffer[0]);
                     }
 
                 } else {
                     Log.d(TAG, "Nothing Avaliable");
-
                 }
 
-                //Wait for 10 seconds
                 try {Thread.sleep(readPeriod);}
                 catch(InterruptedException ex) {Thread.currentThread().interrupt();}
 
