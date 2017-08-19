@@ -16,14 +16,18 @@ public class TimeValueFormatter implements IAxisValueFormatter {
 
     public TimeValueFormatter(long realTime){
         formatter = new DecimalFormat("00");
-        dateFormat = new SimpleDateFormat("dd/M/Y hh:mm a");
+        //dateFormat = new SimpleDateFormat("dd/M/Y hh:mm a");
+        dateFormat = new SimpleDateFormat("dd:hh:mm a");
         year = realTime;
     }
 
     @Override
     public String getFormattedValue(float value, AxisBase axis) {
 
-
+        /*float dayZoom = ;
+        float monthZoom = ;
+        float yearZoom = ;
+        */
         int time = (int)value;
         int seconds = time%60;
         int minutes = (time/60) % 60;
@@ -48,6 +52,7 @@ public class TimeValueFormatter implements IAxisValueFormatter {
         cal.set(Calendar.HOUR_OF_DAY, hours);
         cal.set(Calendar.MINUTE, minutes);
         cal.set(Calendar.SECOND, seconds);
+
 
         return dateFormat.format(cal.getTime());
 

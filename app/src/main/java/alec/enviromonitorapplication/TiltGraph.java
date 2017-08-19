@@ -10,10 +10,14 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.preference.PreferenceManager;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.app.WindowDecorActionBar;
+import android.support.v7.widget.PopupMenu;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -28,6 +32,7 @@ import android.widget.Toast;
 
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.AxisBase;
+import com.github.mikephil.charting.components.LimitLine;
 import com.github.mikephil.charting.components.XAxis;
 import com.github.mikephil.charting.components.YAxis;
 import com.github.mikephil.charting.data.Entry;
@@ -37,6 +42,7 @@ import com.github.mikephil.charting.formatter.IAxisValueFormatter;
 import com.github.mikephil.charting.utils.ViewPortHandler;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import com.jjoe64.graphview.*;
 
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -46,13 +52,16 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.lang.reflect.Type;
 import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+
+import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
 
-public class GraphView extends AppCompatActivity {
+public class TiltGraph extends AppCompatActivity {
 
     private TextView mTextMessage;
     private Handler mHandler; // handler that gets info from Bluetooth service
@@ -62,25 +71,28 @@ public class GraphView extends AppCompatActivity {
     private UUID uuid = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     private static final String TAG = "Debug";
     public static final String SETTINGS_FILE = "EnviroMonitorSettings";
-    public static final String ARRAY_STORAGE_FILE = "EnvMonitorStorageTemp";
+    public static final String ARRAY_STORAGE_FILE = "EnvMonitorStorageTilt";
 
     private ArrayList<BluetoothDevice> pairedDevices;
     private ListView lv;
-    private View view;
     private AlertDialog dialog;
 
+    private List<List<EnvData>> enviromentDataLists;
     private List<EnvData> enviromentData;
 
+    //private List<Entry> temperatureEntries;
+
     private List<Entry> temperatureEntries;
-    private List<Entry> humidityEntries;
 
     private long readPeriod;
+
+    private List<String> addresses;
+    private List<String> names;
 
     private String address;
     private String name;
 
     private LineChart t_chart;
-    private LineChart h_chart;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -89,14 +101,10 @@ public class GraphView extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main_screen);
 
-        Bundle bundle = getIntent().getExtras();
-
-        address = bundle.getString("address");
-
         Toolbar myToolbar = (Toolbar) findViewById(R.id.my_toolbar);
         setSupportActionBar(myToolbar);
 
-        view = getLayoutInflater().inflate(R.layout.popup, null);
+        View view = getLayoutInflater().inflate(R.layout.popup, null);
         lv = (ListView)view.findViewById(R.id.listView);
 
 
@@ -104,29 +112,33 @@ public class GraphView extends AppCompatActivity {
         BA = BluetoothAdapter.getDefaultAdapter();
         pairedDevices = new ArrayList<>();
 
-
         //Load stuff from memory
         temperatureEntries = new LinkedList<>();
-        humidityEntries = new LinkedList<>();
         enviromentData = new LinkedList<>();
 
+        enviromentDataLists = new LinkedList<>();
+
+        addresses = new LinkedList<>();
+        names = new LinkedList<>();
+
         load();
-        /*LayoutInflater vi = (LayoutInflater) getApplicationContext().getSystemService(Context.LAYOUT_INFLATER_SERVICE);
-        View v = vi.inflate(R.layout.graphs, null);
 
-        // insert into main view
-        ViewGroup insertPoint = (ViewGroup) findViewById(R.id.graphscontainer);
-        insertPoint.addView(v, 0, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        */
-
-        //----------Temperatures Chart----------
         Calendar cal = Calendar.getInstance();
-        cal.set(Calendar.getInstance().get(Calendar.YEAR),0,0,0,0,0);
+        //int calYear = cal.get(Calendar.YEAR);
+        //Log.d(TAG, "YEAR: " + calYear);
+        //cal.set(Calendar.YEAR, calYear);
+        cal.set(Calendar.DAY_OF_YEAR, 1);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
         long year = cal.getTimeInMillis();
 
-        //int time = cal.get(Calendar.MINUTE) * 60 + cal.get(Calendar.SECOND);
-        populateGraph(temperatureEntries, humidityEntries, enviromentData);
+        populateGraph(temperatureEntries, enviromentData);
+
+        //----------Temperatures Chart----------
         t_chart = (LineChart) findViewById(R.id.t_chart);
+
         final LineDataSet temperaturesDataSet = new LineDataSet(temperatureEntries, "Temperature");
         temperaturesDataSet.setColor(Color.RED);
         temperaturesDataSet.setDrawHighlightIndicators(false);
@@ -143,18 +155,16 @@ public class GraphView extends AppCompatActivity {
         xaxis.setPosition(XAxis.XAxisPosition.BOTTOM);
         xaxis.setValueFormatter(new TimeValueFormatter(year));
         xaxis.setAxisMinimum(0);
-        xaxis.setAxisMaximum(86400);
-        //xaxis.setLabelCount(24);
+        xaxis.setAxisMaximum(365*24*60*60);
+        xaxis.setLabelCount(3);
         xaxis.setGranularityEnabled(true);
-        xaxis.setGranularity(60);
-        t_chart.setVisibleXRangeMaximum(3600);
+        //xaxis.setGranularity(60*60*6);
+        t_chart.setVisibleXRangeMaximum(3600 * 12);
         t_chart.setVisibleXRangeMinimum(60);
 
         t_chart.moveViewToX(temperaturesDataSet.getEntryForIndex(0).getX());
-        /*for(int i = 0; i < 24*4; i++) {
-            LimitLine line = new LimitLine(i * 15 * 60);
-            xaxis.addLimitLine(line);
-        }*/
+
+        t_chart.getViewPortHandler().contentHeight();
 
         YAxis laxis  = t_chart.getAxisLeft();
         laxis.setValueFormatter(new IAxisValueFormatter() {
@@ -180,51 +190,17 @@ public class GraphView extends AppCompatActivity {
         //----------Temperatures Chart----------
 
 
-        //----------Humidities Chart----------
-        ///humidityEntries.add(new Entry(time, 0));
-        //humidityEntries.add(new Entry(time, 100));
-        h_chart = (LineChart) findViewById(R.id.h_chart);
-        final LineDataSet humiditiesDataSet = new LineDataSet(humidityEntries, "Humidities");
-        humiditiesDataSet.setColor(Color.BLUE);
-        humiditiesDataSet.setDrawHighlightIndicators(false);
-        final LineData humiditiesLineData = new LineData(humiditiesDataSet);
-        humiditiesLineData.setDrawValues(false);
-        humiditiesDataSet.setDrawCircles(false);
-        humiditiesDataSet.setMode(LineDataSet.Mode.HORIZONTAL_BEZIER);
-        humiditiesDataSet.setDrawFilled(true);
-        h_chart.setData(humiditiesLineData);
-        humiditiesDataSet.setAxisDependency(YAxis.AxisDependency.LEFT);
-
-        XAxis hXAxis  = h_chart.getXAxis();
-        hXAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
-        hXAxis.setValueFormatter(new TimeValueFormatter(year));
-
-        YAxis hYAxis  = h_chart.getAxisLeft();
-        hYAxis.setValueFormatter(new IAxisValueFormatter() {
-            @Override
-            public String getFormattedValue(float value, AxisBase axis) {
-                DecimalFormat mFormat = new DecimalFormat("##0");
-                return mFormat.format(value) + "%";
+        if(BA.isEnabled()) {
+            BA.startDiscovery();
+            for(int i = 0; i < addresses.size(); i++) {
+                //mTextMessage.setText(name);
+                if (addresses.get(i) != null) {
+                    Log.d(TAG, "Attemmping to start new thread " + addresses.get(i));
+                    ConnectThread connect = new ConnectThread(BA.getRemoteDevice(addresses.get(i)));
+                    connect.start();
+                }
             }
-        });
-
-        h_chart.getAxisRight().setEnabled(false);
-        hYAxis.setAxisMinimum(0); // start at zero
-        hYAxis.setAxisMaximum(100); // the axis maximum is 100
-
-        ViewPortHandler hand = h_chart.getViewPortHandler();
-        //hand.setMinMaxScaleY(1f, 1f);
-        //raxis.setGranularity(5f); // interval 1
-        //raxis.setLabelCount(10, true); // force 6 labels
-
-        h_chart.setDescription(null);
-        h_chart.invalidate(); // refresh
-        //----------Humidities Chart----------
-
-        if (address != null) {
-                Log.d(TAG, "Attemmping to start new thread" + address);
-                ConnectThread connect = new ConnectThread(BA.getRemoteDevice(address));
-                connect.start();
+            BA.cancelDiscovery();
         }
 
 
@@ -236,13 +212,17 @@ public class GraphView extends AppCompatActivity {
                 dialog.dismiss();
 
                 BluetoothDevice bt = pairedDevices.get(position);
-                address = bt.getAddress();
-                name = bt.getName();
-                Log.d(TAG, bt.getAddress());
-                Log.d(TAG, bt.getName());
+                addresses.add(bt.getAddress());
+                names.add(bt.getName());
 
-                GraphView.ConnectThread thread = new GraphView.ConnectThread(bt);
+                Log.d(TAG, "Size:" + addresses.size());
+
+                Log.d(TAG, "Connected To " + bt.getName() + " : " + bt.getAddress());
+
+                ConnectThread thread = new ConnectThread(bt);
                 thread.start();
+
+                BA.cancelDiscovery();
             }
         });
 
@@ -255,9 +235,9 @@ public class GraphView extends AppCompatActivity {
                 if (msg.arg2 == 'u') {
                     if (true) {
                         long realtime = (cal.getTimeInMillis());
-                        int time = cal.get(Calendar.HOUR_OF_DAY) * (3600) + cal.get(Calendar.MINUTE) * 60 + cal.get(Calendar.SECOND);
-                        String s = "Logging Values: Temperature:" + message[1] + " Humidity:" + message[2] + " Time:" + Long.toString(realtime);
-                        Log.d(TAG, s);
+                        float ftime = convertTime(realtime);
+                        String s = "Tilt Amount:" + message[1] + " Time: " + Long.toString(realtime);
+                        //Log.d(TAG, s);
 
                         //Error from sensor
                         if (message[1] == 0 && message[2] == 0
@@ -268,66 +248,38 @@ public class GraphView extends AppCompatActivity {
                             message[2] = (byte) enviromentData.get(enviromentData.size() - 1).getTemperature();
                         }
 
+
+
                         enviromentData.add(new EnvData(realtime, message[1], message[2]));
 
-                        temperaturesDataSet.addEntry(new Entry(time, message[1]));
+                        temperaturesDataSet.addEntry(new Entry(ftime, message[1]));
                         temperaturesLineData.notifyDataChanged();
                         t_chart.notifyDataSetChanged();
 
-                        humiditiesDataSet.addEntry(new Entry(time, message[2]));
-                        humiditiesLineData.notifyDataChanged();
-                        h_chart.notifyDataSetChanged();
 
-                        /*
-                        int seconds = time%60;
+                        int time = (int)ftime;
+                        int seconds = time % 60;
                         int minutes = (time/60) % 60;
                         int hours = (time/3600) % 60;
-                        Log.d(TAG, "Time: " + hours + ":" +  minutes + ":" + seconds);
-                        */
+                        int day = (time/(3600 * 24)) % 365;
+
+                        //Log.d(TAG, "X loc: " + time + " | " + seconds + " | " + minutes + " | " + hours + " | " + day);
+
+                        Calendar calendar = Calendar.getInstance();
+                        calendar.set(Calendar.DAY_OF_YEAR, day);
+                        calendar.set(Calendar.HOUR_OF_DAY, hours);
+                        calendar.set(Calendar.MINUTE, minutes);
+                        calendar.set(Calendar.SECOND, seconds);
+
+                        SimpleDateFormat dateFormat = new SimpleDateFormat("dd/M/Y hh:mm a");
+                        Log.d(TAG, "Time: " + dateFormat.format(calendar.getTimeInMillis()));
+                        //calendar.setTimeInMillis(realtime);
+                        //Log.d(TAG, "Real Time: " + dateFormat.format(calendar.getTimeInMillis()));
 
                         t_chart.invalidate(); // refresh
-                        h_chart.invalidate(); // refresh
 
-                        mTextMessage.setText(s + " " + enviromentData.size());
+                        //mTextMessage.setText(s + " " + enviromentData.size());
                     }
-                    /*else {
-                        cal.add(Calendar.MILLISECOND, (int)(-1 * readPeriod * msg.arg1));
-                        for(int i = 0; i < (msg.arg1-1)/2 -1; i++) {
-                            long startTime = cal.getTimeInMillis();
-
-                            int tempIndex = 2*i+1;
-                            int huIndex = 2*i+2;
-                            if(message[tempIndex] == 0 && message[huIndex] == 0
-                                    && enviromentData.get(enviromentData.size()-1).getTemperature() != 0
-                                    && enviromentData.get(enviromentData.size()-1).getTemperature() != 0) {
-                                Log.d(TAG, "All Zeros Recorded");
-                                message[1] = (byte) enviromentData.get(enviromentData.size()-1).getTemperature();
-                                message[2] = (byte) enviromentData.get(enviromentData.size()-1).getTemperature();
-                            }
-
-                            int time = cal.get(Calendar.HOUR_OF_DAY) * (3600) + cal.get(Calendar.MINUTE) * 60 + cal.get(Calendar.SECOND);
-                            String s = " t:" + message[tempIndex] + " h:" + message[huIndex] + " time:" + Long.toString(startTime);
-                            Log.d(TAG, s);
-
-                            enviromentData.add(new EnvData(startTime, message[tempIndex], message[huIndex]));
-
-                            temperaturesDataSet.addEntry(new Entry(time, message[1]));
-                            temperaturesLineData.notifyDataChanged();
-
-                            humiditiesDataSet.addEntry(new Entry(time, message[2]));
-                            humiditiesLineData.notifyDataChanged();
-
-                            cal.add(Calendar.MILLISECOND, (int)readPeriod);
-
-                            mTextMessage.setText(s + " " + enviromentData.size());
-
-                        }
-                        t_chart.notifyDataSetChanged();
-                        t_chart.invalidate(); // refresh
-                        h_chart.notifyDataSetChanged();
-                        h_chart.invalidate(); // refresh
-                    }*/
-
                 }
                 else if (msg.arg2 == 'l') {
 
@@ -360,62 +312,22 @@ public class GraphView extends AppCompatActivity {
                         temperaturesDataSet.addEntry(new Entry(time, message[1]));
                         temperaturesLineData.notifyDataChanged();
 
-                        humiditiesDataSet.addEntry(new Entry(time, message[2]));
-                        humiditiesLineData.notifyDataChanged();
-
                         cal.add(Calendar.MILLISECOND, (int) readPeriod);
 
-                        mTextMessage.setText(enviromentData.size());
+                        mTextMessage.setText( "Num recorded:" + enviromentData.size());
 
                     }
 
+
                     t_chart.notifyDataSetChanged();
                     t_chart.invalidate(); // refresh
-                    h_chart.notifyDataSetChanged();
-                    h_chart.invalidate(); // refresh
-
-                } else if (msg.arg2 == 'a') {
-                    cal.add(Calendar.MILLISECOND, (int) (-1 * readPeriod * msg.arg1));
-                    for (int i = 0; i < (msg.arg1 - 1) / 2 - 1; i++) {
-                        long startTime = cal.getTimeInMillis();
-
-                        int tempIndex = 2 * i + 1;
-                        int huIndex = 2 * i + 2;
-
-                        if (message[tempIndex] == 0 && message[huIndex] == 0
-                                && enviromentData.get(enviromentData.size() - 1).getTemperature() != 0
-                                && enviromentData.get(enviromentData.size() - 1).getTemperature() != 0) {
-                            Log.d(TAG, "All Zeros Recorded");
-                            message[1] = (byte) enviromentData.get(enviromentData.size() - 1).getTemperature();
-                            message[2] = (byte) enviromentData.get(enviromentData.size() - 1).getTemperature();
-                        }
-
-                        int time = cal.get(Calendar.HOUR_OF_DAY) * (3600) + cal.get(Calendar.MINUTE) * 60 + cal.get(Calendar.SECOND);
-                        String s = " t:" + message[tempIndex] + " h:" + message[huIndex] + " time:" + Long.toString(startTime);
-                        Log.d(TAG, s);
-
-                        enviromentData.add(new EnvData(startTime, message[tempIndex], message[huIndex]));
-
-                        temperaturesDataSet.addEntry(new Entry(time, message[1]));
-                        temperaturesLineData.notifyDataChanged();
-
-                        humiditiesDataSet.addEntry(new Entry(time, message[2]));
-                        humiditiesLineData.notifyDataChanged();
-
-                        cal.add(Calendar.MILLISECOND, (int) readPeriod);
-
-                        mTextMessage.setText(s + " " + enviromentData.size());
-
-                    }
-                    t_chart.notifyDataSetChanged();
-                    t_chart.invalidate(); // refresh
-                    h_chart.notifyDataSetChanged();
-                    h_chart.invalidate(); // refresh
                 }
                 else if (msg.arg2 == 'p') {
                     byte b = message[2];
                     readPeriod = (((int)message[1]) << 8) + (b & 0xFF);
                 }
+                t_chart.notifyDataSetChanged();
+                t_chart.invalidate(); // refresh
             }
         };
 
@@ -436,14 +348,13 @@ public class GraphView extends AppCompatActivity {
                 //off();
             }
         });
+
     }
 
     @Override
     public void onStart(){
         super.onStart();
     }
-
-
 
     public void off(){
         BA.disable();
@@ -464,11 +375,11 @@ public class GraphView extends AppCompatActivity {
         }
 
         Toast.makeText(getApplicationContext(), "Showing Paired Devices", Toast.LENGTH_SHORT).show();
-        final ArrayAdapter adapter = new ArrayAdapter(GraphView.this, android.R.layout.simple_list_item_1, list);
+        final ArrayAdapter adapter = new ArrayAdapter(TiltGraph.this, android.R.layout.simple_list_item_1, list);
         lv.setAdapter(adapter);
 
         //AlertDialog.Builder builder = new AlertDialog.Builder(mainScreen.this);
-        AlertDialog.Builder builder = new AlertDialog.Builder(GraphView.this);
+        AlertDialog.Builder builder = new AlertDialog.Builder(TiltGraph.this);
         //builder.setCancelable(true);
 
         //Clicking connect twice kills app, parent needs to be removed
@@ -492,8 +403,14 @@ public class GraphView extends AppCompatActivity {
     private void load() {
         SharedPreferences settings = getSharedPreferences(SETTINGS_FILE, 0);
 
-        address = settings.getString("bluetoothAddress", null);
-        name = settings.getString("bluetoothName", null);
+
+        Log.d(TAG, "Size:" + addresses.size());
+        int numDevices = settings.getInt("numDevices", 0);
+        for(int i = 0; i < numDevices; i++) {
+            addresses.add(settings.getString("bluetoothAddress" + i, null));
+            names.add(settings.getString("bluetoothName" + i, null));
+        }
+
         readPeriod = settings.getLong("readPeriod", 3000);
         //this.deleteFile(ARRAY_STORAGE_FILE);
 
@@ -510,7 +427,7 @@ public class GraphView extends AppCompatActivity {
         }catch(FileNotFoundException e){
             Log.e(TAG, "App did not have a file", e);
         } catch (Exception e) {
-            Log.e(TAG, "App did not Load properly", e);
+            Log.e(TAG, "App did not load properly", e);
         }
     }
 
@@ -520,12 +437,16 @@ public class GraphView extends AppCompatActivity {
         SharedPreferences settings = getSharedPreferences(SETTINGS_FILE, 0);
         SharedPreferences.Editor sEditor = settings.edit();
 
-        sEditor.putString("bluetoothAddress", address);
-        sEditor.putString("bluetoothName", name);
+        for(int i = 0; i < addresses.size(); i++) {
+            sEditor.putString("bluetoothAddress"+i, addresses.get(i));
+            sEditor.putString("bluetoothName"+i, names.get(i));
+        }
+
+        sEditor.putInt("numDevices", addresses.size());
         sEditor.putLong("readPeriod", readPeriod);
 
         //Will clear SharedPreferences
-        /*if(false) {
+        /*if(true) {
             sEditor.clear();
         }*/
 
@@ -556,28 +477,46 @@ public class GraphView extends AppCompatActivity {
     /**
      * This function populates the temperature and humidity entry list
      * @param tempEntries
-     * @param huEntries
      * @param data
      */
-    private void populateGraph(List<Entry> tempEntries, List<Entry> huEntries, List<EnvData> data) {
+    private void populateGraph(List<Entry> tempEntries, List<EnvData> data) {
         Calendar cal = Calendar.getInstance();
         if(data.size() == 0) {
-            data.add(new EnvData(cal.getTimeInMillis(), 25, 45));
+            data.add(new EnvData(cal.getTimeInMillis(), 0));
         }
+        cal.set(Calendar.DAY_OF_YEAR, 1);
         cal.set(Calendar.HOUR_OF_DAY, 0);
         cal.set(Calendar.MINUTE, 0);
         cal.set(Calendar.SECOND, 0);
         cal.set(Calendar.MILLISECOND, 0);
-        cal.add(Calendar.DAY_OF_MONTH, 1);
-        cal.add(Calendar.SECOND, -1);
+        //cal.add(Calendar.SECOND, -);
 
         for(EnvData d : data) {
             cal.setTimeInMillis(d.getTime());
-            //Currently should only do 1 hour of time
-            int time = cal.get(Calendar.HOUR_OF_DAY) * 3600 + cal.get(Calendar.MINUTE) * 60 + cal.get(Calendar.SECOND);
-            tempEntries.add(new Entry(time, d.getTemperature()));
-            huEntries.add(new Entry(time, d.getHumidity()));
+            float ftime = convertTime(cal.getTimeInMillis());
+
+            int time = (int)ftime;
+            int seconds = time % 60;
+            int minutes = (time/60) % 60;
+            int hours = (time/3600) % 60;
+            int day = (time/(3600 * 24)) % 365;
+
+
+            Calendar calendar = Calendar.getInstance();
+            //calendar.set(cal.get(Calendar.YEAR),0,0,0,0,0);
+            calendar.set(Calendar.DAY_OF_YEAR, day);
+            calendar.set(Calendar.HOUR_OF_DAY, hours);
+            calendar.set(Calendar.MINUTE, minutes);
+            calendar.set(Calendar.SECOND, seconds);
+
+            SimpleDateFormat dateFormat = new SimpleDateFormat("dd/M/Y hh:mm:ss a");
+            Log.d(TAG, "Time: " + dateFormat.format(calendar.getTimeInMillis()));
+            //Log.d(TAG, "X loc: " + time + " | " + seconds + " | " + minutes + " | " + hours + " | " + day);
+
+            tempEntries.add(new Entry(ftime, d.getTilt()));
         }
+
+
 
     }
 
@@ -598,17 +537,6 @@ public class GraphView extends AppCompatActivity {
         inflater.inflate(R.menu.menu, menu);
         return true;
     }
-
-    private float convertTime(long time) {
-        Calendar cal = Calendar.getInstance();
-        cal.setTimeInMillis(time);
-        float convertedTime = cal.get(Calendar.DAY_OF_YEAR) * (3600*24)
-                + cal.get(Calendar.HOUR_OF_DAY) * (3600)
-                + cal.get(Calendar.MINUTE) * (60)
-                + cal.get(Calendar.SECOND);
-        return convertedTime;
-    }
-
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
@@ -694,6 +622,16 @@ public class GraphView extends AppCompatActivity {
         }
     }
 
+    private float convertTime(long time) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(time);
+        float convertedTime = cal.get(Calendar.DAY_OF_YEAR) * (3600*24)
+                + cal.get(Calendar.HOUR_OF_DAY) * (3600)
+                + cal.get(Calendar.MINUTE) * (60)
+                + cal.get(Calendar.SECOND);
+        return convertedTime;
+    }
+
 
     /**
      * This private inner class handles connecting a bluetooth device to the application
@@ -708,9 +646,11 @@ public class GraphView extends AppCompatActivity {
             BluetoothSocket tmp = null;
             mmDevice = device;
 
+
             try {
                 // Get a socket to connect with the given device.
-                tmp = device.createRfcommSocketToServiceRecord(uuid);
+                //tmp = device.createRfcommSocketToServiceRecord(uuid);
+                tmp = device.createInsecureRfcommSocketToServiceRecord(uuid);
             } catch (IOException e) {
                 Log.e(TAG, "Socket's create() method failed", e);
             }
@@ -725,26 +665,33 @@ public class GraphView extends AppCompatActivity {
                 // Connect to the remote device through the socket. This call blocks
                 // until it succeeds or throws an exception.
                 mmSocket.connect();
+
             } catch (IOException connectException) {
-                // Unable to connect; close the socket and return.
+                Log.d(TAG, "Device Failed to Connect: " + mmDevice.getAddress());
+                connectException.printStackTrace();
                 cancel();
+                return;
             }
 
             // The connection attempt succeeded. Perform work associated with
             // the connection in a separate thread.
             ConnectedThread connected = new ConnectedThread(mHandler, mmSocket, readPeriod, enviromentData);
             connected.start();
+
+
         }
 
         // Closes the client socket and causes the thread to finish.
         public void cancel() {
             try {
                 mmSocket.close();
+                Thread.currentThread().interrupt();
             } catch (IOException e) {
                 Log.e(TAG, "Could not close the client socket", e);
             }
         }
     }
+
 
 
 }

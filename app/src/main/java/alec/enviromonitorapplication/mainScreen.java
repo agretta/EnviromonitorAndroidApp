@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Debug;
 import android.os.Handler;
 import android.os.Message;
 import android.preference.PreferenceManager;
@@ -76,6 +77,7 @@ public class mainScreen extends AppCompatActivity {
     private ListView lv;
     private AlertDialog dialog;
 
+    private List<List<EnvData>> enviromentDataLists;
     private List<EnvData> enviromentData;
 
     private List<Entry> temperatureEntries;
@@ -83,8 +85,9 @@ public class mainScreen extends AppCompatActivity {
 
     private long readPeriod;
 
-    private String address;
-    private String name;
+    private List<Integer> activities;
+    private List<String> addresses;
+    private List<String> names;
 
     private LineChart t_chart;
     private LineChart h_chart;
@@ -104,21 +107,22 @@ public class mainScreen extends AppCompatActivity {
 
 
         mTextMessage = (TextView) findViewById(R.id.message);
+        mTextMessage.setText("Main Screen");
         BA = BluetoothAdapter.getDefaultAdapter();
         pairedDevices = new ArrayList<>();
 
         //Load stuff from memory
-        temperatureEntries = new LinkedList<>();
-        humidityEntries = new LinkedList<>();
-        enviromentData = new LinkedList<>();
+
+        enviromentDataLists = new LinkedList<>();
+
+        addresses = new LinkedList<>();
+        names = new LinkedList<>();
+        activities = new ArrayList<>();
 
         load();
         on();
 
         Calendar cal = Calendar.getInstance();
-        //int calYear = cal.get(Calendar.YEAR);
-        //Log.d(TAG, "YEAR: " + calYear);
-        //cal.set(Calendar.YEAR, calYear);
         cal.set(Calendar.DAY_OF_YEAR, 1);
         cal.set(Calendar.HOUR_OF_DAY, 0);
         cal.set(Calendar.MINUTE, 0);
@@ -126,113 +130,36 @@ public class mainScreen extends AppCompatActivity {
         cal.set(Calendar.MILLISECOND, 0);
         long year = cal.getTimeInMillis();
 
-        populateGraph(temperatureEntries, humidityEntries, enviromentData);
-
-        //----------Temperatures Chart----------
-        t_chart = (LineChart) findViewById(R.id.t_chart);
-
-        final LineDataSet temperaturesDataSet = new LineDataSet(temperatureEntries, "Temperature");
-        temperaturesDataSet.setColor(Color.RED);
-        temperaturesDataSet.setDrawHighlightIndicators(false);
-        final LineData temperaturesLineData = new LineData(temperaturesDataSet);
-        t_chart.setData(temperaturesLineData);
-        temperaturesDataSet.setAxisDependency(YAxis.AxisDependency.LEFT);
-        temperaturesLineData.setDrawValues(false);
-        temperaturesDataSet.setDrawCircles(false);
-        temperaturesDataSet.setMode(LineDataSet.Mode.HORIZONTAL_BEZIER);
-        temperaturesDataSet.setDrawFilled(true);
-
-        //Formating
-        XAxis xaxis  = t_chart.getXAxis();
-        xaxis.setPosition(XAxis.XAxisPosition.BOTTOM);
-        xaxis.setValueFormatter(new TimeValueFormatter(year));
-        xaxis.setAxisMinimum(0);
-        xaxis.setAxisMaximum(365*24*60*60);
-        xaxis.setLabelCount(3);
-        xaxis.setGranularityEnabled(true);
-        //xaxis.setGranularity(60*60*6);
-        t_chart.setVisibleXRangeMaximum(3600 * 12);
-        t_chart.setVisibleXRangeMinimum(60);
-
-        t_chart.moveViewToX(temperaturesDataSet.getEntryForIndex(0).getX());
-
-        YAxis laxis  = t_chart.getAxisLeft();
-        laxis.setValueFormatter(new IAxisValueFormatter() {
-            @Override
-            public String getFormattedValue(float value, AxisBase axis) {
-                DecimalFormat formatter = new DecimalFormat("##0");
-                return formatter.format(value) + " °C";
-            }
-        });
-
-        t_chart.getAxisRight().setEnabled(false);
-        laxis.setAxisMinimum(-10); // start at zero
-        laxis.setAxisMaximum(40); // the axis maximum is 100
-        //t_chart.setVisibleYRangeMaximum(10f, YAxis.AxisDependency.LEFT);
-        t_chart.setDescription(null);
-        //t_chart.setVisibleXRange(0,86400);
-        //t_chart.setVisibleXRange(enviromentData.get(0).getTime(), enviromentData.get(enviromentData.size()-1).getTime());
-
-
-        //t_chart.moveViewToX(temperaturesDataSet.getEntryForIndex(0).getX());
-        t_chart.setScaleEnabled(true);
-        t_chart.invalidate(); // refresh
-        //----------Temperatures Chart----------
-
-
-        //----------Humidities Chart----------
-        h_chart = (LineChart) findViewById(R.id.h_chart);
-        ///humidityEntries.add(new Entry(time, 0));
-        //humidityEntries.add(new Entry(time, 100));
-
-        final LineDataSet humiditiesDataSet = new LineDataSet(humidityEntries, "Humidities");
-        humiditiesDataSet.setColor(Color.BLUE);
-        humiditiesDataSet.setDrawHighlightIndicators(false);
-        final LineData humiditiesLineData = new LineData(humiditiesDataSet);
-        humiditiesLineData.setDrawValues(false);
-        humiditiesDataSet.setDrawCircles(false);
-        humiditiesDataSet.setMode(LineDataSet.Mode.HORIZONTAL_BEZIER);
-        humiditiesDataSet.setDrawFilled(true);
-        h_chart.setData(humiditiesLineData);
-        humiditiesDataSet.setAxisDependency(YAxis.AxisDependency.LEFT);
-
-        XAxis hXAxis  = h_chart.getXAxis();
-        hXAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
-
-        hXAxis.setValueFormatter(new TimeValueFormatter(year));
-
-        YAxis hYAxis  = h_chart.getAxisLeft();
-        hYAxis.setValueFormatter(new IAxisValueFormatter() {
-            @Override
-            public String getFormattedValue(float value, AxisBase axis) {
-                DecimalFormat mFormat = new DecimalFormat("##0");
-                return mFormat.format(value) + "%";
-            }
-        });
-
-        h_chart.getAxisRight().setEnabled(false);
-        hYAxis.setAxisMinimum(0); // start at zero
-        hYAxis.setAxisMaximum(100); // the axis maximum is 100
-
-        ViewPortHandler hand = h_chart.getViewPortHandler();
-        //hand.setMinMaxScaleY(1f, 1f);
-        //raxis.setGranularity(5f); // interval 1
-        //raxis.setLabelCount(10, true); // force 6 labels
-
-        h_chart.setDescription(null);
-        h_chart.invalidate(); // refresh
-        //----------Humidities Chart----------
+        //populateGraph(temperatureEntries, humidityEntries, enviromentData);
 
         if(BA.isEnabled()) {
-            mTextMessage.setText(name);
-            if (address != null) {
-                Log.d(TAG, "Attemmping to start new thread" + address);
-                ConnectThread connect = new ConnectThread(BA.getRemoteDevice(address));
-                connect.start();
+            BA.startDiscovery();
+            for(int i = 0; i < addresses.size(); i++) {
+                //mTextMessage.setText(name);
+                if (addresses.get(i) != null) {
+                    Intent intent;
+                    if(activities.get(i) == 1) {
+                        intent = new Intent(mainScreen.this, GraphView.class);
+                        intent.putExtra("address", addresses.get(i));
+                    } else {
+                        intent = new Intent(mainScreen.this, TiltGraph.class);
+                        intent.putExtra("address", addresses.get(i));
+                    }
+
+                    startActivity(intent);
+                }
             }
+            BA.cancelDiscovery();
         }
 
 
+        //Enables bluetooth and displays the list of paired devices
+        final Button connectButton = (Button) findViewById(R.id.Connect);
+        connectButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                list();
+            }
+        });
 
         //Connect to selected device
         lv.setOnItemClickListener(new AdapterView.OnItemClickListener() {
@@ -242,176 +169,27 @@ public class mainScreen extends AppCompatActivity {
                 dialog.dismiss();
 
                 BluetoothDevice bt = pairedDevices.get(position);
-                address = bt.getAddress();
-                name = bt.getName();
-                Log.d(TAG, bt.getAddress());
-                Log.d(TAG, bt.getName());
+                addresses.add(bt.getAddress());
+                names.add(bt.getName());
 
-                ConnectThread thread = new ConnectThread(bt);
-                thread.start();
+                Log.d(TAG, "Size:" + addresses.size());
+                Log.d(TAG, "Connected To " + bt.getName() + " : " + bt.getAddress());
+
+                Intent intent;
+                if(activities.get(position) == 1) {
+                    intent = new Intent(mainScreen.this, GraphView.class);
+                    intent.putExtra("address", bt.getAddress());
+                } else {
+                    intent = new Intent(mainScreen.this, TiltGraph.class);
+                    intent.putExtra("address", bt.getAddress());
+                }
+
+                startActivity(intent);
+
+                BA.cancelDiscovery();
             }
         });
 
-        //Handle messages passed from the device ConnectedThread
-        mHandler = new Handler() {
-            @Override
-            public void handleMessage(Message msg) {
-                byte[] message = (byte[]) msg.obj;
-                Calendar cal = Calendar.getInstance();
-                if (msg.arg2 == 'u') {
-                    if (true) {
-                        long realtime = (cal.getTimeInMillis());
-                        float ftime = convertTime(realtime);
-                        String s = "LV: Temperature:" + message[1] + " Humidity:" + message[2] + " Time:" + Long.toString(realtime);
-                        Log.d(TAG, s);
-
-                        //Error from sensor
-                        if (message[1] == 0 && message[2] == 0
-                                && enviromentData.get(enviromentData.size() - 1).getTemperature() != 0
-                                && enviromentData.get(enviromentData.size() - 1).getTemperature() != 0) {
-                            Log.d(TAG, "All Zeros Recorded");
-                            message[1] = (byte) enviromentData.get(enviromentData.size() - 1).getTemperature();
-                            message[2] = (byte) enviromentData.get(enviromentData.size() - 1).getTemperature();
-                        }
-
-                        enviromentData.add(new EnvData(realtime, message[1], message[2]));
-
-                        temperaturesDataSet.addEntry(new Entry(ftime, message[1]));
-                        temperaturesLineData.notifyDataChanged();
-                        t_chart.notifyDataSetChanged();
-
-                        humiditiesDataSet.addEntry(new Entry(ftime, message[2]));
-                        humiditiesLineData.notifyDataChanged();
-                        h_chart.notifyDataSetChanged();
-
-                        int time = (int)ftime;
-                        int seconds = time % 60;
-                        int minutes = (time/60) % 60;
-                        int hours = (time/3600) % 60;
-                        int day = (time/(3600 * 24)) % 365;
-
-                        Log.d(TAG, "X loc: " + time + " | " + seconds + " | " + minutes + " | " + hours + " | " + day);
-
-                        Calendar calendar = Calendar.getInstance();
-                        //calendar.set(cal.get(Calendar.YEAR),0,0,0,0,0);
-                        calendar.set(Calendar.DAY_OF_YEAR, day);
-                        calendar.set(Calendar.HOUR_OF_DAY, hours);
-                        calendar.set(Calendar.MINUTE, minutes);
-                        calendar.set(Calendar.SECOND, seconds);
-
-                        SimpleDateFormat dateFormat = new SimpleDateFormat("dd/M/Y hh:mm a");
-                        Log.d(TAG, "Time: " + dateFormat.format(calendar.getTimeInMillis()));
-                        //calendar.setTimeInMillis(realtime);
-                        //Log.d(TAG, "Real Time: " + dateFormat.format(calendar.getTimeInMillis()));
-
-                        t_chart.invalidate(); // refresh
-                        h_chart.invalidate(); // refresh
-
-                        mTextMessage.setText(s + " " + enviromentData.size());
-                    }
-                }
-                else if (msg.arg2 == 'l') {
-
-                    long endTime = cal.getTimeInMillis();
-                    long startTime = enviromentData.get(enviromentData.size() - 1).getTime() + readPeriod;
-                    long difference = (endTime - startTime) / readPeriod;
-
-                    Log.d(TAG, Long.toString(difference));
-                    cal.setTimeInMillis(startTime);
-
-                    for (int i = 0; i < (msg.arg1 - 1) / 2 - 1; i++) {
-
-                        int tempIndex = 2 * i + 1;
-                        int huIndex = 2 * i + 2;
-
-                        if (message[tempIndex] == 0 && message[huIndex] == 0
-                                && enviromentData.get(enviromentData.size() - 1).getTemperature() != 0
-                                && enviromentData.get(enviromentData.size() - 1).getTemperature() != 0) {
-                            Log.d(TAG, "All Zeros Recorded");
-                            message[1] = (byte) enviromentData.get(enviromentData.size() - 1).getTemperature();
-                            message[2] = (byte) enviromentData.get(enviromentData.size() - 1).getTemperature();
-                        }
-
-                        int time = cal.get(Calendar.HOUR_OF_DAY) * (3600) + cal.get(Calendar.MINUTE) * 60 + cal.get(Calendar.SECOND);
-                        String s = " t:" + message[tempIndex] + " h:" + message[huIndex] + " time:" + Long.toString(startTime);
-                        Log.d(TAG, s);
-
-                        enviromentData.add(new EnvData(startTime, message[tempIndex], message[huIndex]));
-
-                        temperaturesDataSet.addEntry(new Entry(time, message[1]));
-                        temperaturesLineData.notifyDataChanged();
-
-                        humiditiesDataSet.addEntry(new Entry(time, message[2]));
-                        humiditiesLineData.notifyDataChanged();
-
-                        cal.add(Calendar.MILLISECOND, (int) readPeriod);
-
-                        mTextMessage.setText( "Num recorded:" + enviromentData.size());
-
-                    }
-
-                    t_chart.notifyDataSetChanged();
-                    t_chart.invalidate(); // refresh
-                    h_chart.notifyDataSetChanged();
-                    h_chart.invalidate(); // refresh
-
-                } else if (msg.arg2 == 'a') {
-                    long startTime = enviromentData.get(enviromentData.size() - 1).getTime() + readPeriod;
-                    cal.setTimeInMillis(startTime);
-                    //cal.add(Calendar.MILLISECOND, (int) (-1 * readPeriod * msg.arg1));
-                    for (int i = 0; i < (msg.arg1 - 1) / 2 - 1; i++) {
-
-                        int tempIndex = 2 * i + 1;
-                        int huIndex = 2 * i + 2;
-
-                        if (message[tempIndex] == 0 && message[huIndex] == 0
-                                && enviromentData.get(enviromentData.size() - 1).getTemperature() != 0
-                                && enviromentData.get(enviromentData.size() - 1).getTemperature() != 0) {
-                            Log.d(TAG, "All Zeros Recorded");
-                            message[1] = (byte) enviromentData.get(enviromentData.size() - 1).getTemperature();
-                            message[2] = (byte) enviromentData.get(enviromentData.size() - 1).getTemperature();
-                        }
-
-                        float time = convertTime(cal.getTimeInMillis());
-                        String s = " t:" + message[tempIndex] + " h:" + message[huIndex] + " time:" + Long.toString(startTime);
-                        Log.d(TAG, s);
-
-                        enviromentData.add(new EnvData(startTime, message[tempIndex], message[huIndex]));
-
-                        temperaturesDataSet.addEntry(new Entry(time, message[1]));
-                        temperaturesLineData.notifyDataChanged();
-
-                        humiditiesDataSet.addEntry(new Entry(time, message[2]));
-                        humiditiesLineData.notifyDataChanged();
-
-                        cal.add(Calendar.MILLISECOND, (int) readPeriod);
-
-                        mTextMessage.setText(s + " " + enviromentData.size());
-
-                    }
-                    t_chart.notifyDataSetChanged();
-                    t_chart.invalidate(); // refresh
-                    h_chart.notifyDataSetChanged();
-                    h_chart.invalidate(); // refresh
-                }
-                else if (msg.arg2 == 'p') {
-                    byte b = message[2];
-                    readPeriod = (((int)message[1]) << 8) + (b & 0xFF);
-                }
-                t_chart.notifyDataSetChanged();
-                t_chart.invalidate(); // refresh
-                h_chart.notifyDataSetChanged();
-                h_chart.invalidate(); // refresh
-            }
-        };
-
-        //Enables bluetooth and displays the list of paired devices
-        final Button connectButton = (Button) findViewById(R.id.Connect);
-        connectButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                list();
-            }
-        });
 
         //Disconnects the paired bluetooth device
         final Button disconnectButton = (Button) findViewById(R.id.Disconnect);
@@ -422,7 +200,6 @@ public class mainScreen extends AppCompatActivity {
                 //off();
             }
         });
-
     }
 
     @Override
@@ -434,7 +211,6 @@ public class mainScreen extends AppCompatActivity {
         BA.disable();
         Toast.makeText(getApplicationContext(), "Turned off" ,Toast.LENGTH_LONG).show();
     }
-
 
     public void list(){
         ((ViewGroup) lv.getParent()).removeView(lv);
@@ -463,7 +239,6 @@ public class mainScreen extends AppCompatActivity {
         dialog.show();
     }
 
-
     /**
      * Function that accesses the stored memory of this device.
      * Loads:
@@ -476,8 +251,20 @@ public class mainScreen extends AppCompatActivity {
      */
     private void load() {
         SharedPreferences settings = getSharedPreferences(SETTINGS_FILE, 0);
-        address = settings.getString("bluetoothAddress", null);
-        name = settings.getString("bluetoothName", null);
+
+
+        Log.d(TAG, "Size:" + addresses.size());
+        int numDevices = settings.getInt("numDevices", 0);
+        numDevices = 2;
+        for(int i = 0; i < numDevices; i++) {
+            addresses.add(settings.getString("bluetoothAddress" + i, null));
+            names.add(settings.getString("bluetoothName"+i, null));
+            activities.add(settings.getInt("activities"+i, -1));
+            //Log.e(TAG, "NumDevices" + numDevices + " //ACT" + activities.get(i));
+        }
+        activities.set(0, 0);
+        activities.set(1, 1);
+
         readPeriod = settings.getLong("readPeriod", 3000);
         //this.deleteFile(ARRAY_STORAGE_FILE);
 
@@ -487,14 +274,14 @@ public class mainScreen extends AppCompatActivity {
             ObjectInputStream ois = new ObjectInputStream(fis);
             Gson gson = new Gson();
             String json = (String) ois.readObject();
-            enviromentData = gson.fromJson(json, new TypeToken<ArrayList<EnvData>>(){}.getType());
+            enviromentDataLists = gson.fromJson(json, new TypeToken<ArrayList<ArrayList<EnvData>>>(){}.getType());
             ois.close();
             fis.close();
             Log.d(TAG, "Loading Old Data" + json);
         }catch(FileNotFoundException e){
             Log.e(TAG, "App did not have a file", e);
         } catch (Exception e) {
-            Log.e(TAG, "App did not Load properly", e);
+            Log.e(TAG, "App did not load properly", e);
         }
     }
 
@@ -504,12 +291,16 @@ public class mainScreen extends AppCompatActivity {
         SharedPreferences settings = getSharedPreferences(SETTINGS_FILE, 0);
         SharedPreferences.Editor sEditor = settings.edit();
 
-        sEditor.putString("bluetoothAddress", address);
-        sEditor.putString("bluetoothName", name);
-        sEditor.putLong("readPeriod", readPeriod);
+        for(int i = 0; i < addresses.size(); i++) {
+            sEditor.putString("bluetoothAddress"+i, addresses.get(i));
+            sEditor.putString("bluetoothName"+i, names.get(i));
+            sEditor.putInt("activities"+i, activities.get(i));
+        }
 
+        sEditor.putInt("numDevices", addresses.size());
+        sEditor.putLong("readPeriod", readPeriod);
         //Will clear SharedPreferences
-        /*if(false) {
+        /*if(true) {
             sEditor.clear();
         }*/
 
@@ -517,12 +308,11 @@ public class mainScreen extends AppCompatActivity {
 
         try {
             Gson gson = new Gson();
-            Type listType = new TypeToken<ArrayList<EnvData>>() {}.getType();
-            String json = gson.toJson(enviromentData, listType);
+            Type listType = new TypeToken<ArrayList<ArrayList<EnvData>>>() {}.getType();
+            String json = gson.toJson(enviromentDataLists, listType);
             FileOutputStream fos = openFileOutput(ARRAY_STORAGE_FILE, Context.MODE_PRIVATE);
             ObjectOutputStream oos = new ObjectOutputStream(fos);
             oos.writeObject(json);
-            //oos.writeObject(humidityEntries);
             oos.close();
             fos.close();
             Log.d(TAG, "Saving Old Data");
@@ -548,20 +338,40 @@ public class mainScreen extends AppCompatActivity {
         if(data.size() == 0) {
             data.add(new EnvData(cal.getTimeInMillis(), 25, 45));
         }
-        cal.set(Calendar.DAY_OF_YEAR, 0);
+        cal.set(Calendar.DAY_OF_YEAR, 1);
         cal.set(Calendar.HOUR_OF_DAY, 0);
         cal.set(Calendar.MINUTE, 0);
         cal.set(Calendar.SECOND, 0);
         cal.set(Calendar.MILLISECOND, 0);
-        //cal.add(Calendar.DAY_OF_MONTH, 1);
-        cal.add(Calendar.SECOND, -1);
+        //cal.add(Calendar.SECOND, -);
 
         for(EnvData d : data) {
             cal.setTimeInMillis(d.getTime());
-            float time = convertTime(cal.getTimeInMillis());
-            tempEntries.add(new Entry(time, d.getTemperature()));
-            huEntries.add(new Entry(time, d.getHumidity()));
+            float ftime = convertTime(cal.getTimeInMillis());
+
+            int time = (int)ftime;
+            int seconds = time % 60;
+            int minutes = (time/60) % 60;
+            int hours = (time/3600) % 60;
+            int day = (time/(3600 * 24)) % 365;
+
+
+            Calendar calendar = Calendar.getInstance();
+            //calendar.set(cal.get(Calendar.YEAR),0,0,0,0,0);
+            calendar.set(Calendar.DAY_OF_YEAR, day);
+            calendar.set(Calendar.HOUR_OF_DAY, hours);
+            calendar.set(Calendar.MINUTE, minutes);
+            calendar.set(Calendar.SECOND, seconds);
+
+            SimpleDateFormat dateFormat = new SimpleDateFormat("dd/M/Y hh:mm:ss a");
+            Log.d(TAG, "Time: " + dateFormat.format(calendar.getTimeInMillis()));
+            //Log.d(TAG, "X loc: " + time + " | " + seconds + " | " + minutes + " | " + hours + " | " + day);
+
+            tempEntries.add(new Entry(ftime, d.getTemperature()));
+            huEntries.add(new Entry(ftime, d.getHumidity()));
         }
+
+
 
     }
 
@@ -617,11 +427,12 @@ public class mainScreen extends AppCompatActivity {
                 t_chart.setVisibleXRangeMinimum(60 * 60);
                 t_chart.setVisibleXRangeMaximum(60 * 60 * 24);
 
+
                 t_chart.moveViewToX(startChartTime);
                 return true;
 
             case R.id.week_view:
-                cal.set(Calendar.DAY_OF_WEEK,0);
+                cal.set(Calendar.DAY_OF_WEEK,1);
                 cal.set(Calendar.HOUR_OF_DAY,0);
                 cal.set(Calendar.MINUTE,0);
                 cal.set(Calendar.SECOND,0);
@@ -634,7 +445,7 @@ public class mainScreen extends AppCompatActivity {
                 t_chart.moveViewToX(startChartTime);
                 return true;
             case R.id.month_view:
-                cal.set(Calendar.DAY_OF_MONTH,0);
+                cal.set(Calendar.DAY_OF_MONTH,1);
                 cal.set(Calendar.HOUR_OF_DAY,0);
                 cal.set(Calendar.MINUTE,0);
                 cal.set(Calendar.SECOND,0);
@@ -647,7 +458,7 @@ public class mainScreen extends AppCompatActivity {
                 t_chart.moveViewToX(startChartTime);
                 return true;
             case R.id.year_view:
-                cal.set(Calendar.DAY_OF_YEAR,0);
+                cal.set(Calendar.DAY_OF_YEAR,1);
                 cal.set(Calendar.HOUR_OF_DAY,0);
                 cal.set(Calendar.MINUTE,0);
                 cal.set(Calendar.SECOND,0);
@@ -660,7 +471,6 @@ public class mainScreen extends AppCompatActivity {
                 t_chart.moveViewToX(startChartTime);
                 return true;
             case R.id.options:
-
                 return true;
             default:
                 return super.onOptionsItemSelected(item);
@@ -691,9 +501,11 @@ public class mainScreen extends AppCompatActivity {
             BluetoothSocket tmp = null;
             mmDevice = device;
 
+
             try {
                 // Get a socket to connect with the given device.
-                tmp = device.createRfcommSocketToServiceRecord(uuid);
+                //tmp = device.createRfcommSocketToServiceRecord(uuid);
+                tmp = device.createInsecureRfcommSocketToServiceRecord(uuid);
             } catch (IOException e) {
                 Log.e(TAG, "Socket's create() method failed", e);
             }
@@ -708,9 +520,12 @@ public class mainScreen extends AppCompatActivity {
                 // Connect to the remote device through the socket. This call blocks
                 // until it succeeds or throws an exception.
                 mmSocket.connect();
+
             } catch (IOException connectException) {
-                // Unable to connect; close the socket and return.
+                Log.d(TAG, "Device Failed to Connect: " + mmDevice.getAddress());
+                connectException.printStackTrace();
                 cancel();
+                return;
             }
 
             // The connection attempt succeeded. Perform work associated with
@@ -723,6 +538,7 @@ public class mainScreen extends AppCompatActivity {
         public void cancel() {
             try {
                 mmSocket.close();
+                Thread.currentThread().interrupt();
             } catch (IOException e) {
                 Log.e(TAG, "Could not close the client socket", e);
             }

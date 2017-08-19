@@ -32,6 +32,7 @@ class ConnectedThread extends Thread {
     private Calendar calendar = Calendar.getInstance();
 
     private List<EnvData> data;
+    boolean newRun;
 
     private static final String TAG = "Debug";
 
@@ -45,7 +46,7 @@ class ConnectedThread extends Thread {
         mySocket = socket;
         InputStream tmpInStream = null;
         OutputStream tmpOutStream = null;
-
+        newRun = true;
         // Get the input and output streams; using temp objects because
         // member streams are final.
         try {
@@ -104,11 +105,11 @@ class ConnectedThread extends Thread {
 
                 }*/
                 //normal update
-                if(pause && data.get(data.size()-1).getTime() < (calendar.getTimeInMillis() - readPeriod * 2)) {
+                if(newRun) {
                     message = new byte[1];
                     message[0] = 'l';
                     Log.d(TAG, "New Message");
-                    pause = false;
+                    newRun = false;
                 }
 
                 else {
@@ -116,7 +117,7 @@ class ConnectedThread extends Thread {
                     message[0] = 'u';
                     message[1] = 0;
                     message[2] = 1;
-                    Log.d(TAG, "Update Message");
+                    Log.d(TAG, "Writing " + message[0] + " " + message[1] + " " + message[2]);
                 }
 
                 write(message);
@@ -140,6 +141,7 @@ class ConnectedThread extends Thread {
                     //if myBuffer[0] is not 0, then an error occured
                     if(myBuffer[0] == 0) {
                         Message readMsg = myHandler.obtainMessage(MessageConstants.MESSAGE_READ, numBytes, message[0], myBuffer);
+                        
                         readMsg.sendToTarget();
                     } else {
                         Log.d(TAG, "Error # " + myBuffer[0]);
